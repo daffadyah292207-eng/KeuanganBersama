@@ -2,7 +2,9 @@
 
 Website pencatatan keuangan pribadi: **pemasukan**, **pengeluaran**, **catatan**, plus rekap **harian**, **bulanan**, dan **tahunan**. Data bisa disimpan di **Supabase (PostgreSQL)** atau di browser (**mode lokal**).
 
-![status](https://img.shields.io/badge/status-siap%20pakai-0f9f6e) ![stack](https://img.shields.io/badge/stack-HTML%20%2B%20JS%20%2B%20Supabase-4f46e5)
+**Live:** <https://keuangan-bersama.vercel.app>
+
+![status](https://img.shields.io/badge/status-siap%20pakai-0f9f6e) ![stack](https://img.shields.io/badge/stack-HTML%20%2B%20JS%20%2B%20Supabase-4f46e5) ![deploy](https://img.shields.io/badge/deploy-Vercel-000000)
 
 ---
 
@@ -263,9 +265,9 @@ Repo ini sudah disiapkan untuk Vercel: tidak ada build step, tidak ada environme
    - **Root Directory**: `./`
    - **Environment Variables**: tidak ada
 4. Klik **Deploy** dan tunggu ±30 detik.
-5. Situs tersedia di `https://keuangan-bersama.vercel.app` (atau nama lain yang Vercel buat).
+5. Situs tersedia di **<https://keuangan-bersama.vercel.app>**.
 
-Setiap `git push` ke branch `main` akan otomatis membuat deployment baru.
+Setiap `git push` ke branch `main` akan otomatis membuat deployment baru **setelah repo terhubung** (Project → Settings → Git → Connect Git Repository).
 
 **Cara B — lewat CLI:**
 
