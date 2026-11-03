@@ -111,23 +111,6 @@ export async function signIn(email, password) {
   return data.user;
 }
 
-export async function signUp(email, password) {
-  requireClient();
-  const { data, error } = await client.auth.signUp({
-    email: String(email).trim(),
-    password,
-  });
-  if (error) throw error;
-
-  if (!data.session) {
-    return { needsConfirmation: true, user: data.user };
-  }
-
-  currentUser = data.user;
-  mode = 'cloud';
-  return { needsConfirmation: false, user: data.user };
-}
-
 export async function signOut() {
   if (!client) return;
   await client.auth.signOut();
@@ -301,7 +284,7 @@ export function clearLocalData() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Profil & panel superadmin                                           */
+/* Profil & panel admin                                                */
 /* ------------------------------------------------------------------ */
 
 export async function getProfile() {
@@ -327,4 +310,24 @@ export async function listUserSummaries() {
 
   if (error) throw new Error(error.message);
   return data || [];
+}
+
+/**
+ * Membuat akun baru. Hanya berhasil jika pengguna yang login adalah superadmin
+ * (ditegakkan lagi oleh fungsi SQL `create_app_user` di server).
+ */
+export async function createUser({ email, password, displayName, role }) {
+  if (mode !== 'cloud' || !currentUser) {
+    throw new Error('Harus login sebagai superadmin untuk membuat akun.');
+  }
+
+  const { data, error } = await client.rpc('create_app_user', {
+    p_email: String(email).trim(),
+    p_password: password,
+    p_display_name: String(displayName || '').trim(),
+    p_role: role || 'user',
+  });
+
+  if (error) throw new Error(error.message);
+  return data;
 }

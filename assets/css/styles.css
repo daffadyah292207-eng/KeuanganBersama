@@ -776,7 +776,39 @@ select#type-filter {
 }
 [data-theme="dark"] .badge { background: #0b1220; }
 .badge.admin { background: var(--brand-soft); color: var(--brand); }
+.badge.admin-role { background: #e0f2fe; color: #0369a1; }
+[data-theme="dark"] .badge.admin-role { background: #082f49; color: #7dd3fc; }
 .admin-note { margin-top: 12px; }
+
+/* ---------------- Tambah akun (superadmin) ---------------- */
+.auth-note { margin-top: 14px; text-align: center; line-height: 1.55; }
+.admin-create {
+  margin-bottom: 18px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card-2);
+}
+[data-theme="dark"] .admin-create { background: #0b1220; }
+.admin-create h3 { margin: 0 0 4px; font-size: 13px; }
+.admin-create-form {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
+  align-items: end;
+}
+.admin-create-form .field { margin: 0; }
+.admin-create-form .field input,
+.admin-create-form .field select { width: 100%; }
+.pass-row { display: flex; gap: 6px; }
+.pass-row input { flex: 1 1 auto; min-width: 0; }
+.pass-row .btn { flex: 0 0 auto; }
+.admin-create-form .form-error,
+.admin-create-form #create-submit { grid-column: 1 / -1; justify-self: start; }
+@media (max-width: 560px) {
+  .admin-create-form { grid-template-columns: 1fr; }
+}
 
 /* ---------------- Toast ---------------- */
 .toast {

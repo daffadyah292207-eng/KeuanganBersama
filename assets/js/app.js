@@ -86,7 +86,6 @@ const state = {
   typeFilter: 'all',
   editId: null,
   formType: 'expense',
-  authTab: 'signin',
   profile: null,
 };
 
@@ -107,8 +106,6 @@ const els = {
   authPassword: $('#auth-password'),
   authSubmit: $('#auth-submit'),
   authError: $('#auth-error'),
-  authTitle: $('#auth-title'),
-  authDesc: $('#auth-desc'),
   useLocal: $('#use-local'),
 
   modeChip: $('#mode-chip'),
@@ -331,6 +328,8 @@ async function refresh() {
   } else {
     state.profile = null;
   }
+
+  updateModeChip();
 
   try {
     const rows = await db.listTransactions(from, range.to);
@@ -576,41 +575,108 @@ function renderList() {
   els.txList.innerHTML = html;
 }
 
+function isStaff() {
+  return state.profile?.role === 'admin' || state.profile?.role === 'superadmin';
+}
+
+function isSuperadmin() {
+  return state.profile?.role === 'superadmin';
+}
+
+function roleLabel(role) {
+  if (role === 'superadmin') return 'Superadmin';
+  if (role === 'admin') return 'Admin';
+  return 'User';
+}
+
 function updateModeChip() {
   const cloud = db.getMode() === 'cloud';
   const user = db.getUser();
-  const isSuperadmin = cloud && state.profile?.role === 'superadmin';
+  const staff = cloud && isStaff();
+  const superadmin = cloud && isSuperadmin();
 
   els.modeChip.classList.toggle('local', !cloud);
   els.modeText.textContent = cloud
     ? (user?.email || 'Terhubung')
     : 'Mode lokal';
 
-  els.adminBtn.hidden = !isSuperadmin;
+  els.adminBtn.hidden = !staff;
+  els.adminBtn.title = superadmin ? 'Panel superadmin' : 'Panel admin';
+  const adminLabel = els.adminBtn.querySelector('span');
+  if (adminLabel) adminLabel.textContent = superadmin ? 'Superadmin' : 'Admin';
   els.logoutBtn.hidden = !cloud || !user;
   els.footMode.textContent = cloud
-    ? (isSuperadmin ? 'Superadmin · tersimpan di Supabase' : 'Tersimpan di Supabase')
+    ? (superadmin ? 'Superadmin · tersimpan di Supabase'
+      : staff ? 'Admin · tersimpan di Supabase'
+      : 'Tersimpan di Supabase')
     : 'Tersimpan di browser ini (lokal)';
 }
 
 /* ------------------------------------------------------------------ */
-/* Panel superadmin                                                    */
+/* Panel admin                                                         */
 /* ------------------------------------------------------------------ */
 
-function openAdmin() {
-  if (state.profile?.role !== 'superadmin') return;
+let adminNotice = null;
 
+function generatePassword(length = 12) {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%';
+  const bytes = crypto.getRandomValues(new Uint8Array(length));
+  return Array.from(bytes, (b) => chars[b % chars.length]).join('');
+}
+
+function openAdmin() {
+  if (!isStaff()) return;
+
+  adminNotice = null;
   els.adminContent.innerHTML = '<p class="muted small">Memuat data akun…</p>';
   if (!els.adminDialog.open) els.adminDialog.showModal();
   renderAdmin();
+}
+
+function adminCreateFormHtml() {
+  if (!isSuperadmin()) return '';
+
+  return `
+    <section class="admin-create">
+      <h3>Tambah akun</h3>
+      <p class="muted tiny">Akun baru langsung aktif dan bisa dipakai login. Hanya superadmin yang bisa membuat akun.</p>
+      <form id="create-user-form" class="admin-create-form" novalidate>
+        <label class="field">Nama tampilan
+          <input id="new-name" type="text" autocomplete="off" placeholder="cth. Budi" />
+        </label>
+        <label class="field">Email
+          <input id="new-email" type="email" autocomplete="off" placeholder="nama@email.com" required />
+        </label>
+        <label class="field">Password
+          <span class="pass-row">
+            <input id="new-password" type="text" autocomplete="new-password" placeholder="Minimal 6 karakter" required minlength="6" />
+            <button type="button" class="btn ghost sm" id="gen-pass">Acak</button>
+          </span>
+        </label>
+        <label class="field">Role
+          <select id="new-role">
+            <option value="admin">Admin</option>
+            <option value="user">User</option>
+            <option value="superadmin">Superadmin</option>
+          </select>
+        </label>
+        <p class="form-error" id="create-error" role="alert" hidden></p>
+        <button class="btn primary" type="submit" id="create-submit">Buat akun</button>
+      </form>
+    </section>`;
 }
 
 async function renderAdmin() {
   try {
     const rows = await db.listUserSummaries();
 
+    const noticeHtml = adminNotice
+      ? `<p class="form-error ${adminNotice.type === 'ok' ? 'ok' : ''}" role="status">${escapeHtml(adminNotice.text)}</p>`
+      : '';
+
     if (!rows.length) {
-      els.adminContent.innerHTML = '<p class="muted small">Belum ada akun.</p>';
+      els.adminContent.innerHTML = `${noticeHtml}${adminCreateFormHtml()}<p class="muted small">Belum ada akun.</p>`;
+      bindAdminForm();
       return;
     }
 
@@ -620,6 +686,8 @@ async function renderAdmin() {
     const totalBalance = totalIncome - totalExpense;
 
     els.adminContent.innerHTML = `
+      ${noticeHtml}
+      ${adminCreateFormHtml()}
       <div class="admin-scroll">
         <table class="admin-table">
           <thead>
@@ -636,6 +704,7 @@ async function renderAdmin() {
             ${rows.map((r) => {
               const balance = Number(r.balance || 0);
               const initial = String(r.display_name || r.email || '?').trim().charAt(0).toUpperCase();
+              const badgeClass = r.role === 'superadmin' ? 'admin' : (r.role === 'admin' ? 'admin-role' : '');
               return `<tr>
                 <td>
                   <div class="admin-user">
@@ -646,7 +715,7 @@ async function renderAdmin() {
                     </div>
                   </div>
                 </td>
-                <td><span class="badge ${r.role === 'superadmin' ? 'admin' : ''}">${r.role === 'superadmin' ? 'Superadmin' : 'User'}</span></td>
+                <td><span class="badge ${badgeClass}">${roleLabel(r.role)}</span></td>
                 <td class="num">${nf.format(Number(r.transaction_count || 0))}</td>
                 <td class="num income">${rp(r.total_income)}</td>
                 <td class="num expense">${rp(r.total_expense)}</td>
@@ -666,10 +735,71 @@ async function renderAdmin() {
         </table>
       </div>
       <p class="muted tiny admin-note">Diperbarui ${escapeHtml(new Date().toLocaleString('id-ID'))} · data hanya-baca</p>`;
+
+    bindAdminForm();
   } catch (err) {
     console.error(err);
     els.adminContent.innerHTML = `<p class="form-error">Gagal memuat data: ${escapeHtml(err?.message || String(err))}</p>`;
   }
+}
+
+function bindAdminForm() {
+  const form = $('#create-user-form', els.adminContent);
+  if (!form) return;
+
+  const nameInput = $('#new-name', form);
+  const emailInput = $('#new-email', form);
+  const passInput = $('#new-password', form);
+  const roleInput = $('#new-role', form);
+  const errorEl = $('#create-error', form);
+  const submitBtn = $('#create-submit', form);
+
+  $('#gen-pass', form).addEventListener('click', () => {
+    passInput.value = generatePassword();
+    passInput.focus();
+  });
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const email = emailInput.value.trim();
+    const password = passInput.value;
+    const displayName = nameInput.value.trim();
+    const role = roleInput.value;
+
+    errorEl.className = 'form-error';
+    errorEl.hidden = true;
+
+    if (!email || !password) {
+      errorEl.textContent = 'Email dan password wajib diisi.';
+      errorEl.hidden = false;
+      return;
+    }
+    if (password.length < 6) {
+      errorEl.textContent = 'Password minimal 6 karakter.';
+      errorEl.hidden = false;
+      return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Membuat…';
+
+    try {
+      await db.createUser({ email, password, displayName, role });
+      adminNotice = {
+        type: 'ok',
+        text: `Akun ${email} (${roleLabel(role)}) berhasil dibuat. Password: ${password}`,
+      };
+      toast('Akun berhasil dibuat.', 'success');
+      await renderAdmin();
+    } catch (err) {
+      console.error(err);
+      errorEl.textContent = err?.message || 'Gagal membuat akun.';
+      errorEl.hidden = false;
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Buat akun';
+    }
+  });
 }
 
 /* ------------------------------------------------------------------ */
@@ -783,31 +913,9 @@ function exportCsv() {
 /* Auth UI                                                             */
 /* ------------------------------------------------------------------ */
 
-function setAuthTab(tab) {
-  state.authTab = tab === 'signup' ? 'signup' : 'signin';
-  const isSignup = state.authTab === 'signup';
-
-  $$('#auth-screen [data-auth-tab]').forEach((btn) => {
-    const active = btn.dataset.authTab === state.authTab;
-    btn.classList.toggle('active', active);
-    btn.setAttribute('aria-selected', String(active));
-  });
-
-  els.authTitle.textContent = isSignup ? 'Buat akun baru' : 'Masuk ke akunmu';
-  els.authDesc.textContent = isSignup
-    ? 'Gratis. Data keuanganmu akan tersimpan di database Supabase milikmu sendiri.'
-    : 'Data tersimpan aman di Supabase dan bisa dibuka dari perangkat mana pun.';
-  els.authSubmit.textContent = isSignup ? 'Daftar' : 'Masuk';
-  els.authPassword.autocomplete = isSignup ? 'new-password' : 'current-password';
-  els.authError.className = 'form-error';
-  els.authError.hidden = true;
-}
-
 function setAuthBusy(busy) {
   els.authSubmit.disabled = busy;
-  els.authSubmit.textContent = busy
-    ? 'Memproses…'
-    : (state.authTab === 'signup' ? 'Daftar' : 'Masuk');
+  els.authSubmit.textContent = busy ? 'Memproses…' : 'Masuk';
 }
 
 function showAuth() {
@@ -817,7 +925,8 @@ function showAuth() {
   state.profile = null;
   state.rows = [];
   els.adminBtn.hidden = true;
-  setAuthTab('signin');
+  els.authError.className = 'form-error';
+  els.authError.hidden = true;
   els.authPassword.value = '';
 }
 
@@ -844,10 +953,6 @@ function bindEvents() {
   });
 
   // --- auth
-  $$('#auth-screen [data-auth-tab]').forEach((btn) => {
-    btn.addEventListener('click', () => setAuthTab(btn.dataset.authTab));
-  });
-
   els.authForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const email = els.authEmail.value.trim();
@@ -860,32 +965,14 @@ function bindEvents() {
       els.authError.hidden = false;
       return;
     }
-    if (password.length < 6) {
-      els.authError.textContent = 'Password minimal 6 karakter.';
-      els.authError.hidden = false;
-      return;
-    }
 
     els.authError.hidden = true;
     setAuthBusy(true);
 
     try {
-      if (state.authTab === 'signin') {
-        await db.signIn(email, password);
-        showApp();
-        toast('Selamat datang kembali!', 'success');
-      } else {
-        const result = await db.signUp(email, password);
-        if (result.needsConfirmation) {
-          setAuthTab('signin');
-          els.authError.className = 'form-error ok';
-          els.authError.textContent = 'Akun dibuat. Cek email untuk konfirmasi, lalu masuk.';
-          els.authError.hidden = false;
-        } else {
-          showApp();
-          toast('Akun berhasil dibuat. Selamat mencatat!', 'success');
-        }
-      }
+      await db.signIn(email, password);
+      showApp();
+      toast('Selamat datang kembali!', 'success');
     } catch (err) {
       els.authError.className = 'form-error';
       els.authError.textContent = friendlyAuthError(err);

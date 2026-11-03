@@ -19,7 +19,9 @@ Website pencatatan keuangan pribadi: **pemasukan**, **pengeluaran**, **catatan**
 - Ekspor CSV sesuai periode & filter.
 - Tema terang/gelap otomatis.
 - **Mode lokal** (tanpa akun) dan **mode Supabase** (login, tersinkron antar perangkat).
-- Keamanan baris (RLS): setiap pengguna hanya bisa melihat datanya sendiri.
+- **Role** `user` / `admin` / `superadmin`: admin melihat ringkasan semua akun (hanya-baca), superadmin bisa membuat akun baru dari panel.
+- Pendaftaran mandiri dinonaktifkan — akun hanya dibuat oleh superadmin.
+- Keamanan baris (RLS): pengguna biasa hanya bisa melihat datanya sendiri; admin/superadmin hanya mendapat akses baca.
 
 ---
 
@@ -69,9 +71,11 @@ Yang dibuat:
 | `v_daily_summary` | rekap per hari |
 | `v_monthly_summary` | rekap per bulan |
 | `v_yearly_summary` | rekap per tahun |
-| `public.profiles` | profil + role (`user` / `superadmin`) |
-| `public.is_superadmin()` | penanda hak akses superadmin untuk RLS |
-| `v_user_summary` | ringkasan semua akun untuk panel superadmin |
+| `public.profiles` | profil + role (`user` / `admin` / `superadmin`) |
+| `public.is_superadmin()` | penanda hak akses superadmin (pembuatan akun) |
+| `public.is_admin()` | penanda hak baca admin + superadmin untuk RLS |
+| `public.create_app_user(...)` | RPC pembuatan akun oleh superadmin |
+| `v_user_summary` | ringkasan semua akun untuk panel admin |
 
 ### 2.3 Ambil kunci API
 
@@ -89,18 +93,26 @@ export const config = {
 };
 ```
 
-4. Simpan file, lalu **refresh** halaman. Akan muncul layar **Masuk / Daftar**.
+4. Simpan file, lalu **refresh** halaman. Akan muncul layar **Masuk**.
 
 > ⚠️ Gunakan hanya **anon / publishable** key. **Jangan pernah** memakai `service_role` key di browser — key itu melewati RLS.
 
-### 2.4 Daftar akun & tes
+### 2.4 Membuat akun pertama (superadmin)
 
-1. Klik tab **Daftar**, isi email + password (minimal 6 karakter).
-2. Jika diminta konfirmasi email:
-   - Cek email lalu klik tautan konfirmasi, **atau**
-   - Matikan sementara: **Authentication → Sign In / Providers → Email → matikan "Confirm email" → Save**, lalu daftar lagi.
-3. Setelah masuk, tambahkan transaksi.
-4. Cek di **Table Editor → transactions** — data harus muncul.
+Pendaftaran mandiri sudah **dinonaktifkan**. Akun hanya bisa dibuat oleh superadmin, jadi untuk instalasi baru buat akun pertama lewat Dashboard:
+
+1. **Authentication → Users → Add user → Create new user**.
+2. Isi email + password, centang **Auto Confirm User**.
+3. Buka **SQL Editor**, jadikan akun itu superadmin:
+
+   ```sql
+   update public.profiles
+   set role = 'superadmin'
+   where email = 'email-anda@contoh.com';
+   ```
+
+4. Login di aplikasi — tombol **Superadmin** akan muncul di kanan atas.
+5. Akun berikutnya dibuat lewat **Panel Superadmin → Tambah akun**.
 
 ### 2.5 Akun & role (project yang sudah terpasang)
 
@@ -108,33 +120,35 @@ Project Supabase yang dipakai aplikasi ini sudah berisi 3 akun:
 
 | Email | Role | Bisa apa |
 | --- | --- | --- |
-| `admin@keuanganbersama.app` | `superadmin` | semua fitur user + **Panel Superadmin** (melihat ringkasan semua akun, hanya-baca) |
-| `user1@keuanganbersama.app` | `user` | mencatat & melihat transaksi miliknya sendiri |
-| `user2@keuanganbersama.app` | `user` | mencatat & melihat transaksi miliknya sendiri |
+| `admin@keuanganbersama.app` | `superadmin` | semua fitur + **Panel Admin**, melihat ringkasan semua akun, dan **membuat akun baru** |
+| `user1@keuanganbersama.app` | `admin` | semua fitur + **Panel Admin** (hanya-baca, tidak bisa membuat akun) |
+| `user2@keuanganbersama.app` | `admin` | semua fitur + **Panel Admin** (hanya-baca, tidak bisa membuat akun) |
 
 Password **tidak** disimpan di repo ini. Kalau lupa, reset lewat **Dashboard → Authentication → Users → pilih user → Reset password** (atau minta admin database mengganti hash-nya).
 
 **Cara kerja role:**
 
-- Role disimpan di `public.profiles.role` (`user` atau `superadmin`).
-- Superadmin dikenali lewat fungsi `public.is_superadmin()`; RLS `transactions` memberi akses **SELECT saja** untuk superadmin, jadi panel admin tidak bisa mengubah data orang lain.
-- Panel admin muncul otomatis sebagai tombol **Superadmin** di kanan atas setelah login dengan akun ber-role `superadmin`.
+- Role disimpan di `public.profiles.role`: `user`, `admin`, atau `superadmin`.
+- `public.is_admin()` → `true` untuk `admin` dan `superadmin`; dipakai RLS agar keduanya bisa **membaca** seluruh transaksi. Tidak ada akses ubah/hapus data orang lain.
+- `public.is_superadmin()` → hanya `superadmin`; dipakai untuk mengizinkan pembuatan akun.
+- Panel muncul sebagai tombol **Admin** / **Superadmin** di kanan atas. Form **Tambah akun** hanya tampil untuk superadmin.
+- Pembuatan akun memanggil RPC `public.create_app_user(...)` yang berjalan sebagai `security definer` dan **memeriksa ulang** `is_superadmin()` di server. Jadi memanggil RPC langsung tanpa hak superadmin akan ditolak (HTTP 403).
+- Pendaftaran mandiri (`auth.signUp`) sudah dihapus dari UI dan dari kode aplikasi.
 
-**Menjadikan pengguna lain superadmin** (SQL Editor):
-
-```sql
-update public.profiles
-set role = 'superadmin'
-where email = 'email@contoh.com';
-```
-
-**Mengembalikan ke user biasa:**
+**Mengubah role** (SQL Editor):
 
 ```sql
+-- jadikan admin
+update public.profiles set role = 'admin' where email = 'email@contoh.com';
+
+-- jadikan superadmin
+update public.profiles set role = 'superadmin' where email = 'email@contoh.com';
+
+-- kembalikan ke user biasa
 update public.profiles set role = 'user' where email = 'email@contoh.com';
 ```
 
-> Akun baru yang mendaftar lewat halaman **Daftar** otomatis mendapat baris `profiles` dengan role `user` (lewat trigger `on_auth_user_created`).
+> Akun yang dibuat lewat Panel Admin otomatis mendapat baris `profiles` (trigger `on_auth_user_created`) lalu role-nya di-set sesuai pilihan.
 
 ---
 

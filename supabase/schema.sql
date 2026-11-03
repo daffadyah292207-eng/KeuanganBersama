@@ -163,11 +163,17 @@ create table if not exists public.profiles (
   id           uuid primary key references auth.users (id) on delete cascade,
   email        text not null default '',
   display_name text not null default '',
-  role         text not null default 'user' check (role in ('user', 'superadmin')),
+  role         text not null default 'user' check (role in ('user', 'admin', 'superadmin')),
   created_at   timestamptz not null default now()
 );
 
-comment on table public.profiles is 'Profil pengguna aplikasi + role (user / superadmin).';
+comment on table public.profiles is 'Profil pengguna aplikasi + role (user / admin / superadmin).';
+
+-- Pastikan constraint role juga diperbarui pada database yang sudah ada
+alter table public.profiles drop constraint if exists profiles_role_check;
+alter table public.profiles
+  add constraint profiles_role_check
+  check (role in ('user', 'admin', 'superadmin'));
 
 alter table public.profiles enable row level security;
 
@@ -187,11 +193,28 @@ $$;
 revoke all on function public.is_superadmin() from public;
 grant execute on function public.is_superadmin() to authenticated;
 
+-- Admin & superadmin boleh membaca data seluruh akun
+create or replace function public.is_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.profiles
+    where id = auth.uid() and role in ('admin', 'superadmin')
+  );
+$$;
+
+revoke all on function public.is_admin() from public;
+grant execute on function public.is_admin() to authenticated;
+
 drop policy if exists "profiles_select_own_or_admin" on public.profiles;
 create policy "profiles_select_own_or_admin"
   on public.profiles for select
   to authenticated
-  using (id = auth.uid() or public.is_superadmin());
+  using (id = auth.uid() or public.is_admin());
 
 revoke all on public.profiles from anon;
 revoke all on public.profiles from authenticated;
@@ -226,12 +249,13 @@ select id, coalesce(email, ''),
 from auth.users
 on conflict (id) do nothing;
 
--- Superadmin boleh membaca seluruh transaksi (read-only)
+-- Admin & superadmin boleh membaca seluruh transaksi (read-only)
 drop policy if exists "transactions_select_superadmin" on public.transactions;
-create policy "transactions_select_superadmin"
+drop policy if exists "transactions_select_admin" on public.transactions;
+create policy "transactions_select_admin"
   on public.transactions for select
   to authenticated
-  using (public.is_superadmin());
+  using (public.is_admin());
 
 -- Ringkasan per pengguna untuk panel admin
 create or replace view public.v_user_summary
@@ -253,3 +277,86 @@ group by p.id, p.email, p.display_name, p.role;
 revoke all on public.v_user_summary from anon;
 revoke all on public.v_user_summary from authenticated;
 grant select on public.v_user_summary to authenticated;
+
+-- ============================================================
+--  PEMBUATAN AKUN OLEH SUPERADMIN
+--  Pendaftaran mandiri dinonaktifkan; akun hanya dibuat lewat
+--  fungsi ini (dipanggil dari Panel Admin).
+-- ============================================================
+create or replace function public.create_app_user(
+  p_email text,
+  p_password text,
+  p_display_name text default '',
+  p_role text default 'user'
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  v_id    uuid := gen_random_uuid();
+  v_email text := lower(btrim(coalesce(p_email, '')));
+  v_role  text := lower(coalesce(nullif(btrim(p_role), ''), 'user'));
+  v_name  text;
+begin
+  if not public.is_superadmin() then
+    raise exception 'Hanya superadmin yang boleh membuat akun.'
+      using errcode = '42501';
+  end if;
+
+  if v_email = '' or v_email !~ '^[^@[:space:]]+@[^@[:space:]]+[.][^@[:space:]]+$' then
+    raise exception 'Format email tidak valid.';
+  end if;
+
+  if length(coalesce(p_password, '')) < 6 then
+    raise exception 'Password minimal 6 karakter.';
+  end if;
+
+  if v_role not in ('user', 'admin', 'superadmin') then
+    raise exception 'Role tidak valid.';
+  end if;
+
+  if exists (select 1 from auth.users where lower(email) = v_email) then
+    raise exception 'Email sudah terdaftar.';
+  end if;
+
+  v_name := coalesce(nullif(btrim(p_display_name), ''), split_part(v_email, '@', 1));
+
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password,
+    email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+    created_at, updated_at, is_sso_user, is_anonymous,
+    confirmation_token, recovery_token, email_change, email_change_token_new,
+    email_change_token_current, phone_change, phone_change_token, reauthentication_token
+  ) values (
+    '00000000-0000-0000-0000-000000000000', v_id, 'authenticated', 'authenticated', v_email,
+    extensions.crypt(p_password, extensions.gen_salt('bf', 10)), now(),
+    '{"provider":"email","providers":["email"]}'::jsonb,
+    jsonb_build_object('display_name', v_name),
+    now(), now(), false, false,
+    '', '', '', '', '', '', '', ''
+  );
+
+  insert into auth.identities (
+    id, user_id, provider_id, identity_data, provider,
+    last_sign_in_at, created_at, updated_at
+  ) values (
+    gen_random_uuid(), v_id, v_id::text,
+    jsonb_build_object('sub', v_id::text, 'email', v_email, 'email_verified', true),
+    'email', now(), now(), now()
+  );
+
+  update public.profiles
+     set email = v_email,
+         display_name = v_name,
+         role = v_role
+   where id = v_id;
+
+  return v_id;
+end;
+$$;
+
+revoke all on function public.create_app_user(text, text, text, text) from public;
+revoke all on function public.create_app_user(text, text, text, text) from anon;
+grant execute on function public.create_app_user(text, text, text, text) to authenticated;
