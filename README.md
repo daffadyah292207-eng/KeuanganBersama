@@ -281,7 +281,7 @@ Repo ini sudah disiapkan untuk Vercel: tidak ada build step, tidak ada environme
 4. Klik **Deploy** dan tunggu ±30 detik.
 5. Situs tersedia di **<https://keuangan-bersama.vercel.app>**.
 
-Setiap `git push` ke branch `main` akan otomatis membuat deployment baru **setelah repo terhubung** (Project → Settings → Git → Connect Git Repository).
+Setiap `git push` ke branch `main` otomatis membuat deployment baru — repo sudah terhubung ke project Vercel (`vercel git connect`).
 
 **Cara B — lewat CLI:**
 
@@ -338,7 +338,9 @@ from transactions;
 | Halaman kosong / gaya tidak muncul | Jalankan lewat `start.bat` / `node server.mjs`, bukan `file://`. |
 | "Supabase belum dikonfigurasi" | Isi `SUPABASE_URL` & `SUPABASE_ANON_KEY` di `assets/js/config.js`, lalu refresh. |
 | "Invalid API key" | Salah menyalin key. Ambil ulang dari Project Settings → API. Jangan pakai `service_role`. |
-| Login gagal "Email not confirmed" | Klik tautan di email, atau matikan *Confirm email* di Authentication → Providers → Email. |
+| Login gagal "Email not confirmed" | Akun buatan superadmin sudah terkonfirmasi otomatis. Untuk akun lama, klik tautan di email atau konfirmasi lewat Dashboard → Authentication → Users. |
+| Tidak ada tombol **Daftar** | Memang sengaja: pendaftaran mandiri dinonaktifkan. Minta superadmin membuatkan akun lewat Panel Admin. |
+| Form "Tambah akun" tidak muncul | Hanya role `superadmin` yang melihat form itu. Cek `select email, role from profiles;`. |
 | Data tidak muncul setelah login | Pastikan `schema.sql` sudah dijalankan dan RLS aktif. Cek Console browser (F12). |
 | `opencode mcp auth supabase` gagal | Pastikan OpenCode sudah di-restart setelah `opencode.jsonc` dibuat; coba `opencode mcp debug supabase`. |
 | Data hilang setelah ganti browser | Mode lokal tidak tersinkron. Sambungkan Supabase lalu salin ulang datanya. |
