@@ -1,0 +1,8 @@
+# Berkas yang tidak perlu ikut deploy ke Vercel
+server.mjs
+start.bat
+opencode.jsonc
+supabase/
+README.md
+.gitignore
+.gitattributes

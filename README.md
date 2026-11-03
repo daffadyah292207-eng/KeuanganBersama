@@ -219,6 +219,8 @@ C:\Keuangan\
 ├─ index.html                 # halaman utama + dialog form
 ├─ start.bat                  # klik dua kali untuk menjalankan
 ├─ server.mjs                 # web server statis tanpa dependency
+├─ vercel.json                # konfigurasi deploy Vercel (header keamanan)
+├─ .vercelignore              # berkas yang tidak ikut deploy
 ├─ opencode.jsonc             # konfigurasi MCP Supabase untuk OpenCode
 ├─ assets/
 │  ├─ css/styles.css          # tampilan (terang & gelap, responsif)
@@ -227,7 +229,7 @@ C:\Keuangan\
 │     ├─ db.js                # lapisan data: Supabase / localStorage
 │     └─ app.js               # logika UI, rekap, grafik, ekspor
 ├─ supabase/
-│  └─ schema.sql              # tabel, RLS, trigger, view rekap
+│  └─ schema.sql              # tabel, RLS, trigger, view rekap, profil/role
 └─ README.md
 ```
 
@@ -244,10 +246,39 @@ C:\Keuangan\
 
 ## 6. Deploy gratis
 
-Website ini statis, jadi bisa di-hosting di mana saja:
+Website ini statis, jadi bisa di-hosting di mana saja.
 
-- **Netlify Drop** — buka <https://app.netlify.com/drop>, tarik folder `C:\Keuangan` (tanpa `server.mjs` dan `start.bat` juga tidak masalah).
-- **Vercel** — import folder/repo, framework: *Other*, output: root.
+### 6.1 Vercel (disarankan)
+
+Repo ini sudah disiapkan untuk Vercel: tidak ada build step, tidak ada environment variable, dan `vercel.json` sudah berisi header keamanan.
+
+**Cara A — lewat dashboard (paling mudah):**
+
+1. Buka <https://vercel.com/new> dan login (bisa pakai akun GitHub).
+2. Pilih **Import Git Repository** → repo `daffadyah292207-eng/KeuanganBersama`.
+3. Isi pengaturan:
+   - **Framework Preset**: `Other`
+   - **Build Command**: kosongkan / biarkan default
+   - **Output Directory**: kosongkan / `.`
+   - **Root Directory**: `./`
+   - **Environment Variables**: tidak ada
+4. Klik **Deploy** dan tunggu ±30 detik.
+5. Situs tersedia di `https://keuangan-bersama.vercel.app` (atau nama lain yang Vercel buat).
+
+Setiap `git push` ke branch `main` akan otomatis membuat deployment baru.
+
+**Cara B — lewat CLI:**
+
+```bat
+npx vercel login
+npx vercel --prod
+```
+
+Ikuti tautan login yang muncul di terminal, lalu pilih project saat diminta.
+
+### 6.2 Opsi lain
+
+- **Netlify Drop** — buka <https://app.netlify.com/drop>, tarik folder `C:\Keuangan`.
 - **GitHub Pages** — push ke repo, Settings → Pages → deploy dari branch `main` folder `/root`.
 
 Pastikan `assets/js/config.js` sudah diisi sebelum deploy.
